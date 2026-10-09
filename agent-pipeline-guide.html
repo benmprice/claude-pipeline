@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Claude Code Multi-Agent</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky top nav, single-column content, responsive */
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-2: #21262d;
+  --border: #30363d;
+  --fg: #e6edf3;
+  --fg-muted: #8b949e;
+  --fg-code: #c9d1d9;
+  --accent: #f0883e;
+  --accent-dim: rgba(240,136,62,0.12);
+  --green: #3fb950;
+  --blue: #79c0ff;
+  --purple: #d2a8ff;
+  --yellow: #e3b341;
+  --red: #ff7b72;
+  --code-bg: #0d1117;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #ffffff;
+    --surface: #f6f8fa;
+    --surface-2: #eaeef2;
+    --border: #d0d7de;
+    --fg: #1f2328;
+    --fg-muted: #656d76;
+    --fg-code: #24292f;
+    --accent: #b35a00;
+    --accent-dim: rgba(179,90,0,0.08);
+    --green: #1a7f37;
+    --blue: #0550ae;
+    --purple: #6639ba;
+    --yellow: #7d4e00;
+    --red: #cf222e;
+    --code-bg: #f6f8fa;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #ffffff; --surface: #f6f8fa; --surface-2: #eaeef2;
+  --border: #d0d7de; --fg: #1f2328; --fg-muted: #656d76;
+  --fg-code: #24292f; --accent: #b35a00; --accent-dim: rgba(179,90,0,0.08);
+  --green: #1a7f37; --blue: #0550ae; --purple: #6639ba;
+  --yellow: #7d4e00; --red: #cf222e; --code-bg: #f6f8fa; color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 15px; line-height: 1.65;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 100;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex; align-items: center; gap: 0; overflow-x: auto; scrollbar-width: none;
+}
+.nav::-webkit-scrollbar { display: none; }
+.nav-brand {
+  font-weight: 600; font-size: 14px; color: var(--fg); white-space: nowrap;
+  padding-right: 20px; border-right: 1px solid var(--border); margin-right: 4px;
+  letter-spacing: -0.01em;
+}
+.nav a {
+  color: var(--fg-muted); font-size: 13px; font-weight: 500;
+  padding: 12px 12px; white-space: nowrap; border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.nav a:hover { color: var(--fg); text-decoration: none; }
+.nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Main layout */
+.main { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+
+/* Sections */
+section { margin-bottom: 64px; scroll-margin-top: 56px; }
+h2 {
+  font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+  margin-bottom: 8px; color: var(--fg);
+}
+h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; color: var(--fg); }
+.section-intro { color: var(--fg-muted); margin-bottom: 28px; max-width: 640px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+/* Hero */
+.hero { padding: 40px 0 32px; }
+.hero-eyebrow {
+  font-size: 12px; font-weight: 500; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+}
+.hero h1 {
+  font-size: 34px; font-weight: 600; letter-spacing: -0.03em;
+  line-height: 1.2; margin-bottom: 16px; text-wrap: balance;
+}
+.hero p { font-size: 16px; color: var(--fg-muted); max-width: 580px; line-height: 1.7; }
+
+/* Mental model cards */
+.model-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 24px; }
+@media (max-width: 620px) { .model-grid { grid-template-columns: 1fr; } }
+.model-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 18px;
+}
+.model-card .label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 8px;
+}
+.model-card .title { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+.model-card .desc { font-size: 13px; color: var(--fg-muted); line-height: 1.5; }
+
+/* Agent cards */
+.agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
+@media (max-width: 580px) { .agent-grid { grid-template-columns: 1fr; } }
+.agent-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px; position: relative; overflow: hidden;
+}
+.agent-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.agent-card.blue::before { background: var(--blue); }
+.agent-card.green::before { background: var(--green); }
+.agent-card.orange::before { background: var(--accent); }
+.agent-card .agent-name {
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+  font-weight: 500; margin-bottom: 6px;
+}
+.agent-card.blue .agent-name { color: var(--blue); }
+.agent-card.green .agent-name { color: var(--green); }
+.agent-card.orange .agent-name { color: var(--accent); }
+.agent-card p { font-size: 13px; color: var(--fg-muted); line-height: 1.55; margin-bottom: 12px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 2px 8px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--fg-muted);
+}
+
+/* File tree */
+.file-tree {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 20px 24px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+  line-height: 1.8; margin-top: 20px;
+}
+.ft-dir { color: var(--blue); }
+.ft-file { color: var(--fg-code); }
+.ft-comment { color: var(--fg-muted); }
+.ft-new { color: var(--green); }
+.ft-indent { display: inline-block; width: 20px; }
+
+/* Code blocks */
+.code-block {
+  position: relative; background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; margin-top: 16px; overflow: hidden;
+}
+.code-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px; border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.code-header .filename {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--fg-muted);
+}
+.copy-btn {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--fg-muted); font-size: 12px; padding: 3px 10px; cursor: pointer;
+  font-family: 'IBM Plex Sans', sans-serif; transition: all 0.15s;
+}
+.copy-btn:hover { background: var(--border); color: var(--fg); }
+.copy-btn.copied { color: var(--green); border-color: var(--green); }
+pre.code {
+  padding: 18px 20px; margin: 0; overflow-x: auto;
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.7;
+  color: var(--fg-code); tab-size: 2;
+}
+pre.code::-webkit-scrollbar { height: 4px; }
+pre.code::-webkit-scrollbar-track { background: transparent; }
+pre.code::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Syntax colors */
+.sy-comment { color: var(--fg-muted); font-style: italic; }
+.sy-key { color: var(--blue); }
+.sy-val { color: var(--yellow); }
+.sy-str { color: var(--green); }
+.sy-cmd { color: var(--purple); }
+.sy-head { color: var(--accent); font-weight: 500; }
+.sy-sep { color: var(--fg-muted); }
+.sy-num { color: var(--yellow); }
+
+/* Tabs (for agent files) */
+.tabs { margin-top: 20px; }
+.tab-list {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none;
+}
+.tab-list::-webkit-scrollbar { display: none; }
+.tab-btn {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 8px 16px; cursor: pointer; color: var(--fg-muted);
+  font-size: 13px; font-weight: 500; font-family: inherit;
+  white-space: nowrap; transition: all 0.15s; margin-bottom: -1px;
+}
+.tab-btn:hover { color: var(--fg); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Workflow steps */
+.workflow { margin-top: 24px; }
+.step {
+  display: flex; gap: 16px; margin-bottom: 20px; align-items: flex-start;
+}
+.step-num {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent-dim); border: 1.5px solid var(--accent);
+  color: var(--accent); font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.step-body { flex: 1; min-width: 0; padding-top: 3px; }
+.step-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+.step-desc { font-size: 13px; color: var(--fg-muted); line-height: 1.5; }
+.step-desc code {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  background: var(--surface-2); padding: 1px 5px; border-radius: 3px;
+  color: var(--fg-code);
+}
+.step-connector {
+  width: 1px; height: 16px; background: var(--border); margin-left: 14px;
+}
+
+/* Callout */
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-dim);
+  border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 20px 0;
+  font-size: 14px; color: var(--fg-muted);
+}
+.callout strong { color: var(--fg); }
+.callout.blue { border-color: var(--blue); background: rgba(121,192,255,0.07); }
+.callout.green { border-color: var(--green); background: rgba(63,185,80,0.07); }
+
+/* Sandcastle */
+.sandcastle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+@media (max-width: 560px) { .sandcastle-grid { grid-template-columns: 1fr; } }
+.sc-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px;
+}
+.sc-card .sc-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--fg-muted); margin-bottom: 8px;
+}
+.sc-card .sc-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.sc-card p { font-size: 13px; color: var(--fg-muted); line-height: 1.5; }
+
+/* Inline code */
+code {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+  background: var(--surface-2); padding: 1px 5px; border-radius: 3px;
+  color: var(--fg-code);
+}
+pre code { background: none; padding: 0; }
+
+/* Utils */
+.mt4 { margin-top: 4px; }
+.mt8 { margin-top: 8px; }
+.mt16 { margin-top: 16px; }
+.mt24 { margin-top: 24px; }
+.muted { color: var(--fg-muted); }
+.small { font-size: 13px; }
+ul.list { padding-left: 20px; color: var(--fg-muted); font-size: 14px; }
+ul.list li { margin-bottom: 4px; }
+ul.list strong { color: var(--fg); }
+
+/* Backlog format */
+.backlog-demo {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 20px 24px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+  line-height: 1.8; margin-top: 16px; overflow-x: auto;
+}
+.bd-h1 { color: var(--accent); font-weight: 500; }
+.bd-h2 { color: var(--blue); font-weight: 500; }
+.bd-h3 { color: var(--fg); font-weight: 500; }
+.bd-meta { color: var(--fg-muted); font-style: italic; }
+.bd-label { color: var(--purple); }
+.bd-field { color: var(--blue); }
+.bd-check { color: var(--fg-muted); }
+.bd-done { color: var(--green); }
+.bd-sep { color: var(--border); }
+
+/* Command table */
+.cmd-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+.cmd-table th {
+  text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border);
+  color: var(--fg-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.cmd-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.cmd-table tr:last-child td { border-bottom: none; }
+.cmd-table td:first-child { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--accent); white-space: nowrap; }
+.cmd-table td:last-child { color: var(--fg-muted); font-size: 13px; }
+.badge {
+  display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  padding: 1px 6px; border-radius: 3px; font-weight: 500; margin-left: 6px; vertical-align: middle;
+}
+.badge-global { background: rgba(210,168,255,0.15); color: var(--purple); border: 1px solid rgba(210,168,255,0.3); }
+.badge-project { background: rgba(63,185,80,0.1); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">Agent Setup</div>
+  <a href="#overview" class="active" onclick="setActive(this)">Overview</a>
+  <a href="#agents" onclick="setActive(this)">Agent Stack</a>
+  <a href="#setup" onclick="setActive(this)">File Setup</a>
+  <a href="#spec" onclick="setActive(this)">Spec</a>
+  <a href="#workflow" onclick="setActive(this)">AFK Workflow</a>
+  <a href="#bootstrap" onclick="setActive(this)">Bootstrap</a>
+  <a href="#backlog" onclick="setActive(this)">Backlog</a>
+  <a href="#sandcastle" onclick="setActive(this)">Sandcastle</a>
+</nav>
+
+<div class="main">
+
+  <div class="hero">
+    <div class="hero-eyebrow">Claude Code · Multi-Agent</div>
+    <h1>Build a self-driving<br>coding pipeline</h1>
+    <p>Tell Claude to implement a GitHub issue. It fetches the issue, plans the work, writes the code in an isolated worktree, reviews it, and opens a PR — without you watching.</p>
+  </div>
+
+  <hr>
+
+  <!-- OVERVIEW -->
+  <section id="overview">
+    <h2>How it works</h2>
+    <p class="section-intro">Three concepts you need to understand before writing a single config file.</p>
+    <div class="model-grid">
+      <div class="model-card">
+        <div class="label">Concept 1</div>
+        <div class="title">Main thread = orchestrator</div>
+        <div class="desc">The Claude session you talk to IS the orchestrator. You don't need a separate orchestrator agent. It reads your request, fetches context, and decides which workers to spawn.</div>
+      </div>
+      <div class="model-card">
+        <div class="label">Concept 2</div>
+        <div class="title">Subagents = specialists</div>
+        <div class="desc">Agents in <code>.claude/agents/*.md</code> are workers with a focused job, restricted tools, and their own context window. The orchestrator delegates to them and synthesizes results.</div>
+      </div>
+      <div class="model-card">
+        <div class="label">Concept 3</div>
+        <div class="title">Worktrees = isolation</div>
+        <div class="desc">Add <code>isolation: worktree</code> to an agent and it gets its own clean git checkout. Changes stay isolated from your main branch until you review and merge them.</div>
+      </div>
+    </div>
+
+    <div class="callout mt24">
+      <strong>The key insight:</strong> Claude uses each agent's <code>description</code> field to decide when to delegate. Write descriptions that clearly state when to use the agent — Claude picks the right one automatically.
+    </div>
+
+    <h3 class="mt24">Commands at a glance</h3>
+    <table class="cmd-table">
+      <thead>
+        <tr><th>Command</th><th>Scope</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>/bootstrap</td>
+          <td><span class="badge badge-global">global</span></td>
+          <td>One-shot project setup. Writes all agent files, command files, and CLAUDE.md. Run once per new repo.</td>
+        </tr>
+        <tr>
+          <td>/spec &lt;id&gt;</td>
+          <td><span class="badge badge-project">project</span></td>
+          <td>Interactively grill a vague issue into a tight spec. Rewrites the issue body and applies <code>agent-ready</code>. Always run before <code>/build</code>.</td>
+        </tr>
+        <tr>
+          <td>/build &lt;id&gt;</td>
+          <td><span class="badge badge-project">project</span></td>
+          <td>Full AFK pipeline: plan → implement → review → PR. Only runs on <code>agent-ready</code> issues.</td>
+        </tr>
+        <tr>
+          <td>/backlog [instruction]</td>
+          <td><span class="badge badge-global">global</span></td>
+          <td>Natural-language backlog manager. Auto-detects GitHub, Gitea, or local BACKLOG.md. Add, move, prioritize, close in plain English.</td>
+        </tr>
+        <tr>
+          <td>/reformat-backlog [path]</td>
+          <td><span class="badge badge-global">global</span></td>
+          <td>Normalizes any existing backlog file into canonical BACKLOG.md format. Assigns IDs, maps sections, fixes priorities.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- AGENT STACK -->
+  <section id="agents">
+    <h2>Your 3-agent stack</h2>
+    <p class="section-intro">People who've shipped multi-agent workflows converge on 3 roles. You could add a dedicated QA agent, but the reviewer handles testing and gives you the same coverage with less overhead.</p>
+
+    <div class="agent-grid">
+      <div class="agent-card blue">
+        <div class="agent-name">planner</div>
+        <p>Reads the issue and explores the codebase. Returns a structured implementation plan: files to touch, steps to follow, tests to write. Read-only — never modifies anything.</p>
+        <div class="tags">
+          <span class="tag">model: haiku</span>
+          <span class="tag">read-only</span>
+          <span class="tag">permissionMode: plan</span>
+        </div>
+      </div>
+      <div class="agent-card green">
+        <div class="agent-name">implementer</div>
+        <p>Takes the planner's output and writes the code. Runs in an isolated git worktree so your main branch is never touched. Commits when done and reports results.</p>
+        <div class="tags">
+          <span class="tag">model: sonnet</span>
+          <span class="tag">isolation: worktree</span>
+          <span class="tag">full tools</span>
+        </div>
+      </div>
+      <div class="agent-card orange">
+        <div class="agent-name">reviewer</div>
+        <p>Reviews the diff, runs the test suite, and gives a clear <strong>APPROVE / REQUEST CHANGES / BLOCK</strong> verdict. Also the QA layer — surfaces failing tests before the PR is created.</p>
+        <div class="tags">
+          <span class="tag">model: sonnet</span>
+          <span class="tag">Bash + read-only</span>
+          <span class="tag">runs tests</span>
+        </div>
+      </div>
+      <div class="agent-card" style="border-style: dashed; background: none;">
+        <div class="agent-name muted">+ optional: researcher</div>
+        <p class="mt4">Add this for issues that need external research (docs, RFCs, package APIs). It's a web-search-only agent that hands context to the planner. Skip it initially.</p>
+        <div class="tags">
+          <span class="tag">WebSearch only</span>
+          <span class="tag">add later</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout blue mt24">
+      <strong>On model choice:</strong> Planner uses Haiku — it's read-only codebase exploration, speed matters and cost adds up. Implementer and reviewer both use Sonnet because you want quality there. Don't use Opus for the whole pipeline unless you're debugging something subtle.
+    </div>
+  </section>
+
+  <!-- SETUP -->
+  <section id="setup">
+    <h2>File structure</h2>
+    <p class="section-intro">Everything lives inside <code>.claude/</code> at your project root. Commit it — your whole team gets the same agent behavior. The global commands live in <code>~/.claude/commands/</code> and are available across every repo.</p>
+
+    <div class="file-tree">
+<span class="ft-dir">your-project/</span>
+├── <span class="ft-dir">.claude/</span>
+│   ├── <span class="ft-dir">agents/</span>
+│   │   ├── <span class="ft-new">planner.md</span>         <span class="ft-comment"># read-only analyst</span>
+│   │   ├── <span class="ft-new">implementer.md</span>    <span class="ft-comment"># writes code in worktree</span>
+│   │   └── <span class="ft-new">reviewer.md</span>       <span class="ft-comment"># tests + code review</span>
+│   └── <span class="ft-dir">commands/</span>
+│       ├── <span class="ft-new">spec.md</span>           <span class="ft-comment"># /spec — grill an issue into a spec</span>
+│       └── <span class="ft-new">build.md</span>          <span class="ft-comment"># /build — full AFK pipeline</span>
+├── <span class="ft-file">CLAUDE.md</span>               <span class="ft-comment"># project rules + agent workflow</span>
+└── <span class="ft-file">...your code...</span>
+
+<span class="ft-comment"># Global commands (across all repos):</span>
+<span class="ft-dir">~/.claude/commands/</span>
+├── <span class="ft-new">bootstrap.md</span>          <span class="ft-comment"># /bootstrap — one-shot project setup</span>
+├── <span class="ft-new">backlog.md</span>            <span class="ft-comment"># /backlog — natural language backlog manager</span>
+└── <span class="ft-new">reformat-backlog.md</span>   <span class="ft-comment"># /reformat-backlog — normalize any backlog file</span>
+    </div>
+
+    <div class="callout green mt16">
+      <strong>Global vs. project commands:</strong> <code>/spec</code> and <code>/build</code> are project-level — they're committed to your repo and baked to a specific backend (GitHub, Gitea, or local) at bootstrap time. <code>/backlog</code>, <code>/reformat-backlog</code>, and <code>/bootstrap</code> are global — they live in <code>~/.claude/commands/</code> and auto-detect context at runtime.
+    </div>
+
+    <!-- Tabbed agent files -->
+    <div class="tabs mt24">
+      <h3>Agent files</h3>
+      <div class="tab-list">
+        <button class="tab-btn active" onclick="switchTab(this, 'tab-planner')">planner.md</button>
+        <button class="tab-btn" onclick="switchTab(this, 'tab-implementer')">implementer.md</button>
+        <button class="tab-btn" onclick="switchTab(this, 'tab-reviewer')">reviewer.md</button>
+        <button class="tab-btn" onclick="switchTab(this, 'tab-build')">build.md</button>
+      </div>
+
+      <div id="tab-planner" class="tab-panel active">
+        <div class="code-block">
+          <div class="code-header">
+            <span class="filename">.claude/agents/planner.md</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre class="code"><span class="sy-sep">---</span>
+<span class="sy-key">name</span>: planner
+<span class="sy-key">description</span>: <span class="sy-val">Analyzes issues and the codebase to produce a structured implementation plan. Use first on any new issue or feature.</span>
+<span class="sy-key">tools</span>: <span class="sy-val">Read, Grep, Glob, Bash</span>
+<span class="sy-key">model</span>: <span class="sy-val">haiku</span>
+<span class="sy-key">effort</span>: <span class="sy-val">high</span>
+<span class="sy-key">permissionMode</span>: <span class="sy-val">plan</span>
+<span class="sy-key">color</span>: <span class="sy-val">blue</span>
+<span class="sy-sep">---</span>
+
+You are a senior software architect. Your job is to analyze an
+issue and the codebase, then produce a clear implementation plan.
+
+<span class="sy-head">## Process</span>
+1. Read the issue thoroughly (provided in the delegation prompt)
+2. Use Grep and Glob to explore files related to the issue
+3. Read the key files to understand existing patterns
+4. Identify what needs to change and why
+5. Produce a structured plan (see Output Format below)
+
+<span class="sy-head">## Output Format</span>
+Return a plan with these sections:
+
+**Summary** — 2-3 sentences describing the approach
+
+**Files to modify** — List each file with a brief rationale
+
+**New files** — Any new files needed, with their purpose
+
+**Implementation steps** — Numbered, ordered, concrete steps
+(reference actual function names and file paths)
+
+**Tests to write** — What tests cover this change
+
+**Risks** — Edge cases, breaking changes, or concerns
+
+<span class="sy-head">## Rules</span>
+- Name actual files. Cite line numbers when relevant.
+- Don't implement anything. Return only the plan.
+- If the issue is unclear, call out what's ambiguous.
+- Keep the plan actionable enough that another agent can
+  follow it without talking to you again.</pre>
+        </div>
+      </div>
+
+      <div id="tab-implementer" class="tab-panel">
+        <div class="code-block">
+          <div class="code-header">
+            <span class="filename">.claude/agents/implementer.md</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre class="code"><span class="sy-sep">---</span>
+<span class="sy-key">name</span>: implementer
+<span class="sy-key">description</span>: <span class="sy-val">Implements features and bug fixes based on a provided plan. Runs in an isolated git worktree. Use after planner has returned a plan.</span>
+<span class="sy-key">tools</span>: <span class="sy-val">Read, Edit, Write, Bash, Grep, Glob</span>
+<span class="sy-key">model</span>: <span class="sy-val">sonnet</span>
+<span class="sy-key">effort</span>: <span class="sy-val">medium</span>
+<span class="sy-key">permissionMode</span>: <span class="sy-val">acceptEdits</span>
+<span class="sy-key">isolation</span>: <span class="sy-val">worktree</span>
+<span class="sy-key">color</span>: <span class="sy-val">green</span>
+<span class="sy-sep">---</span>
+
+You are a senior software engineer implementing features based on
+a plan provided by the orchestrator.
+
+<span class="sy-head">## Process</span>
+1. Read the implementation plan carefully
+2. Explore the files mentioned in the plan before editing
+3. Implement each step methodically
+4. Write tests as specified in the plan
+5. Run the tests: [TEST_COMMAND]
+6. Run the linter: [LINT_COMMAND]
+7. Stage all changes and create a commit
+
+<span class="sy-head">## Standards</span>
+- Match the existing code style exactly (indentation, naming, patterns)
+- Write tests before or alongside the implementation
+- Keep changes focused — don't refactor unrelated code
+- If you discover the plan is wrong, note the deviation and explain why
+- Use conventional commit format: `feat: ...` or `fix: ...`
+
+<span class="sy-head">## Commit message format</span>
+```
+feat(scope): short description
+
+- Bullet points for key changes
+- Reference issue number if known
+
+Closes #&lt;issue-number&gt;
+```
+
+<span class="sy-head">## When Done — Report</span>
+- What was implemented (brief)
+- Test results (pass/fail counts)
+- Any deviations from the plan and why
+- The commit hash</pre>
+        </div>
+      </div>
+
+      <div id="tab-reviewer" class="tab-panel">
+        <div class="code-block">
+          <div class="code-header">
+            <span class="filename">.claude/agents/reviewer.md</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre class="code"><span class="sy-sep">---</span>
+<span class="sy-key">name</span>: reviewer
+<span class="sy-key">description</span>: <span class="sy-val">Reviews code changes for correctness, quality, and test coverage. Runs the test suite and gives a clear verdict. Use after implementer completes work.</span>
+<span class="sy-key">tools</span>: <span class="sy-val">Read, Bash, Grep, Glob</span>
+<span class="sy-key">model</span>: <span class="sy-val">sonnet</span>
+<span class="sy-key">effort</span>: <span class="sy-val">high</span>
+<span class="sy-key">color</span>: <span class="sy-val">orange</span>
+<span class="sy-sep">---</span>
+
+You are a skeptical senior code reviewer. Review the implementation
+and give a clear, actionable verdict. Do not soften verdicts.
+
+<span class="sy-head">## Process</span>
+1. Run `git diff main` (or the appropriate base branch)
+2. Read each modified file in full context
+3. Run the test suite: [TEST_COMMAND]
+4. Run the linter: [LINT_COMMAND]
+5. Check that new code has test coverage
+
+<span class="sy-head">## Review Checklist</span>
+- Logic correctness and edge cases
+- Tests pass and cover new/changed code
+- No security issues (injection, secrets in code, unvalidated input)
+- No breaking changes to public APIs
+- Code follows project conventions (naming, structure, patterns)
+- No debugging artifacts (console.logs, TODO comments, dead code)
+- Error handling is appropriate
+
+<span class="sy-head">## Verdict Format</span>
+
+Start your response with one of:
+
+**✅ APPROVE** — Implementation is solid, create the PR
+**⚠️ REQUEST CHANGES** — Issues found but fixable, list them
+**🚫 BLOCK** — Fundamental problem, needs replanning
+
+Then provide:
+- Issues found (label: critical / warning / nit)
+- Test results (pass/fail/skip counts)
+- What's done well
+
+Be direct. If this would pass your real code review, say so.</pre>
+        </div>
+      </div>
+
+      <div id="tab-build" class="tab-panel">
+        <div class="code-block">
+          <div class="code-header">
+            <span class="filename">.claude/commands/build.md (GitHub variant)</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre class="code">Implement GitHub issue #$ARGUMENTS end-to-end.
+
+<span class="sy-head">## Pre-flight</span>
+Run: `gh issue view $ARGUMENTS --json labels`
+Check that the issue has the `agent-ready` label.
+If it does NOT have `agent-ready`, stop immediately and tell the user
+to run `/spec $ARGUMENTS` first.
+
+<span class="sy-head">## Step 1 — Fetch context</span>
+Run: `gh issue view $ARGUMENTS --json title,body,labels,comments`
+
+<span class="sy-head">## Step 2 — Plan</span>
+Delegate to the `planner` agent.
+Pass: the full issue text + project context from CLAUDE.md.
+Wait for the structured implementation plan.
+
+<span class="sy-head">## Step 3 — Implement</span>
+Delegate to the `implementer` agent.
+Pass: the planner's full output.
+It will implement in an isolated worktree and commit when done.
+Wait for its report (commit hash, test results, deviations).
+
+<span class="sy-head">## Step 4 — Review</span>
+Delegate to the `reviewer` agent.
+Pass: the implementer's commit hash and summary.
+Wait for its APPROVE / REQUEST CHANGES / BLOCK verdict.
+
+<span class="sy-head">## Step 5 — Verdict</span>
+
+If **✅ APPROVE**:
+  Run `gh pr create --fill` and report the PR URL.
+  Run `gh issue edit $ARGUMENTS --add-label "in-review"`
+
+If **⚠️ REQUEST CHANGES**:
+  Surface the reviewer's feedback in full.
+  Ask the user how to proceed before doing anything else.
+
+If **🚫 BLOCK**:
+  Share the reviewer's concerns and stop.
+  Do not attempt a fix — this needs replanning via `/spec`.</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLAUDE.md -->
+    <h3 class="mt24">CLAUDE.md — the project config</h3>
+    <p class="small muted" style="margin-bottom: 0;">Generated by <code>/bootstrap</code>. Loads automatically into every Claude Code session. Tells the orchestrator how to use your agents.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="filename">CLAUDE.md (project root)</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre class="code"><span class="sy-head"># [project-name] — Claude Instructions</span>
+
+<span class="sy-head">## Commands</span>
+
+| Command | Purpose |
+|---|---|
+| `/spec [id]` | Grill an issue into an unambiguous spec. Always run before /build. |
+| `/build [id]` | Run the full pipeline: plan → implement → review → PR. agent-ready issues only. |
+| `/backlog [instruction]` | Add, move, prioritize, or view backlog items in natural language. |
+
+<span class="sy-head">## Tech Stack</span>
+- **Language**: [detected language]
+- **Test command**: [detected or TODO]
+- **Lint command**: [detected or TODO]
+- **Source dir**: [detected]
+
+<span class="sy-head">## Agent Pipeline</span>
+
+When working on an issue, always follow this sequence:
+1. Fetch the issue (gh issue view / curl Gitea API / read BACKLOG.md)
+2. Delegate to `planner` — analysis and plan, read-only
+3. Delegate to `implementer` — code in isolated worktree
+4. Delegate to `reviewer` — tests + verdict
+5. If APPROVE: create PR. If REQUEST CHANGES: surface to user.
+
+<span class="sy-head">## Conventions</span>
+<span class="sy-comment">&lt;!-- TODO: add project-specific conventions agents must follow --&gt;</span>
+- Branch naming: `feature/&lt;issue-id&gt;-&lt;slug&gt;`
+- Commits: Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`)
+- Tests must pass before any PR is created
+- Never push directly to main</pre>
+    </div>
+  </section>
+
+  <!-- SPEC -->
+  <section id="spec">
+    <h2>Issue spec</h2>
+    <p class="section-intro">The pipeline assumes issues are well-specified. Raw ideas aren't. Run <code>/spec</code> first — interactively, with you in the loop — before tagging anything <code>agent-ready</code>.</p>
+
+    <div class="model-grid" style="grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div class="model-card">
+        <div class="label">The problem</div>
+        <div class="title">Vague input → broken output</div>
+        <div class="desc">If the issue says "add dark mode" and nothing else, the planner guesses, the implementer builds the wrong thing, and the reviewer approves it. Garbage in, garbage out — politely and expensively.</div>
+      </div>
+      <div class="model-card">
+        <div class="label">The fix</div>
+        <div class="title">A label-based quality gate</div>
+        <div class="desc">Only issues tagged <code>agent-ready</code> get picked up by <code>/build</code>. You earn that label by running <code>/spec</code>, which interrogates the idea until it's specific enough to build from.</div>
+      </div>
+    </div>
+
+    <div class="callout blue mt24">
+      <strong>Inspired by Matt Pocock's grilling technique:</strong> The spec prompt doesn't help you flesh out the idea — it interrogates it. It asks the questions your PR reviewer will ask, before any code is written. You stay in the loop; this step is intentionally interactive.
+    </div>
+
+    <h3 class="mt24">The <code>/spec</code> slash command</h3>
+    <p class="small muted" style="margin-bottom: 0;">Lives in <code>.claude/commands/spec.md</code> (project-level, written by bootstrap). Type <code>/spec 47</code> — Claude fetches the issue and grills you on it. When you're satisfied, it rewrites the issue body and applies the <code>agent-ready</code> label.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="filename">.claude/commands/spec.md (GitHub variant)</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre class="code">Refine issue #$ARGUMENTS into a spec that an agent can implement
+without asking clarifying questions.
+
+<span class="sy-head">## Step 1 — Fetch the raw issue</span>
+
+Run: `gh issue view $ARGUMENTS --json title,body,labels,comments`
+
+Read it carefully. Don't tell me what it says yet.
+
+<span class="sy-head">## Step 2 — Grill me</span>
+
+Your goal: reach a point where you could hand this issue to another
+engineer — one who has never spoken to us — and they would know
+exactly what to build, what done looks like, and what not to touch.
+
+Ask me questions until you're there. Ask ONE question at a time and
+wait for my answer before asking the next. Follow threads — if my
+answer opens a new gap, chase it before moving on.
+
+Don't be gentle. You're a senior engineer who has been burned by
+vague tickets. You've seen "add dark mode" become a three-month
+nightmare. You know that words like "improve", "better", "simple",
+and "clean up" are hiding decisions that someone has to make.
+
+Areas to probe as needed — not a checklist, but a lens:
+- What specifically is broken or missing today?
+- What does a user do or see when this is done that they can't now?
+- What is explicitly out of scope?
+- What breaks if the implementation goes slightly wrong?
+- What must not change — existing APIs, patterns, files, behavior?
+- What assumptions is the issue author making that aren't written down?
+
+Keep asking until you're confident. There's no fixed number of
+questions. Some issues need two; some need twelve.
+
+<span class="sy-head">## Step 3 — Write the refined spec</span>
+
+When you have what you need, produce a rewritten issue body in this
+exact format — no other sections, no extra headers:
+
+```
+## Problem
+[1–2 sentences. Specific. No weasel words.]
+
+## Acceptance Criteria
+- [ ] [Testable. A reviewer can verify this without asking anyone.]
+- [ ] [Add as many as the issue actually needs.]
+
+## Out of Scope
+- [Explicit exclusion — something someone might assume is included]
+
+## Edge Cases
+- [Scenario]: [Expected behavior]
+
+## Technical Notes
+[Constraints, affected files, patterns to follow, or compatibility
+requirements. Omit this section entirely if there are none.]
+```
+
+Show me the draft. Ask: "Does this capture it? Anything to change?"
+
+Iterate until I'm satisfied. Then run:
+  `gh issue edit $ARGUMENTS --body "[the final spec]"`
+  `gh issue edit $ARGUMENTS --add-label "agent-ready"`
+
+Confirm when done. The issue is now ready for `/build $ARGUMENTS`.</pre>
+    </div>
+
+    <div class="callout green mt16">
+      <strong>Tip:</strong> Create the <code>agent-ready</code> label first: <code>gh label create "agent-ready" --color "#3fb950" --description "Spec is complete — safe for agent pipeline"</code>. Bootstrap does this for you.
+    </div>
+
+    <h3 class="mt24">The workflow in practice</h3>
+    <div class="workflow">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Idea lands in your tracker</div>
+          <div class="step-desc">You open an issue (or add to BACKLOG.md) with a rough idea. No label. It's just a note for now.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">You run <code>/spec &lt;id&gt;</code></div>
+          <div class="step-desc">Interactive session. Claude grills you, you answer. Takes 5–10 minutes. Claude rewrites the issue body and adds the <code>agent-ready</code> label when you're satisfied.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Run <code>/build &lt;id&gt;</code> and walk away</div>
+          <div class="step-desc">The pipeline now has everything it needs. Planner reads a tight spec, implementer has clear acceptance criteria, reviewer knows what done looks like.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WORKFLOW -->
+  <section id="workflow">
+    <h2>The AFK workflow</h2>
+    <p class="section-intro">What actually happens when you type <code>/build 47</code> and go make coffee.</p>
+
+    <div class="workflow">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">You kick it off</div>
+          <div class="step-desc">Type <code>/build 47</code> in Claude Code. The slash command file loads, replacing <code>$ARGUMENTS</code> with <code>47</code>. Claude reads the instructions and starts.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Pre-flight check</div>
+          <div class="step-desc">Claude checks for the <code>agent-ready</code> label. If it's missing, it stops and tells you to run <code>/spec 47</code> first. No label, no pipeline.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Orchestrator fetches context</div>
+          <div class="step-desc">Main Claude fetches the full issue. It reads your CLAUDE.md to understand the project, then prepares the delegation prompt for the planner.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Planner agent runs (Haiku, read-only)</div>
+          <div class="step-desc">Gets its own fresh context window. Grep/Globs through the codebase, reads relevant files. Returns a structured plan: files, steps, tests, risks. Runs cheap and fast.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Implementer runs in isolated worktree (Sonnet)</div>
+          <div class="step-desc">Claude Code creates a temporary git worktree — a clean checkout branched from your default branch. The implementer works there. Your main checkout is completely untouched. It writes code, runs tests, commits.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <div class="step-title">Reviewer checks the diff (Sonnet)</div>
+          <div class="step-desc">Reads the full diff, runs the test suite, checks coverage. Returns a verdict. If <strong>APPROVE</strong>, Claude creates the PR. If <strong>REQUEST CHANGES</strong>, it surfaces the feedback and asks you how to proceed.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <div class="step-title">PR created, you get the link</div>
+          <div class="step-desc">Claude runs <code>gh pr create --fill</code> using the commit messages. Reports the PR URL. You review it like any other PR — you're the final human gate.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout mt24">
+      <strong>For true AFK mode:</strong> Run Claude Code with <code>claude --permission-mode auto</code> or set <code>permissionMode: dontAsk</code> on your agents. Auto mode uses a background classifier to approve routine operations. You'll still get surfaced for anything unusual.
+    </div>
+
+    <h3 class="mt24">Permission mode cheat sheet</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="filename">permissionMode options</span></div>
+      <pre class="code"><span class="sy-key">plan</span>        <span class="sy-comment"># Read-only. Can't write or run commands. Good for planner.</span>
+<span class="sy-key">acceptEdits</span> <span class="sy-comment"># Auto-approves file edits. Prompts for bash. Good for implementer.</span>
+<span class="sy-key">auto</span>        <span class="sy-comment"># Background classifier approves routine ops. Best for AFK.</span>
+<span class="sy-key">dontAsk</span>    <span class="sy-comment"># Auto-denies permission prompts. Aggressive; use with care.</span>
+<span class="sy-key">default</span>     <span class="sy-comment"># Manual mode. Prompts you for everything. Safe default.</span></pre>
+    </div>
+  </section>
+
+  <!-- BOOTSTRAP -->
+  <section id="bootstrap">
+    <h2>Bootstrap: one-shot setup</h2>
+    <p class="section-intro">Run <code>/bootstrap</code> once in a new repo and it writes everything: all three agents, both project commands, and a CLAUDE.md. It auto-detects your backend and substitutes the right tools throughout.</p>
+
+    <div class="model-grid">
+      <div class="model-card">
+        <div class="label">GitHub repos</div>
+        <div class="title">gh CLI</div>
+        <div class="desc">Detects <code>github.com</code> in your git remote. Uses <code>gh issue view</code>, <code>gh issue edit</code>, <code>gh pr create</code>. Creates the <code>agent-ready</code> label automatically.</div>
+      </div>
+      <div class="model-card">
+        <div class="label">Gitea repos</div>
+        <div class="title">curl + API</div>
+        <div class="desc">Detects any other hostname. Uses the Gitea REST API with your token (<code>$GITEA_TOKEN</code> → config file → <code>.gitea-token</code> in repo root).</div>
+      </div>
+      <div class="model-card">
+        <div class="label">No remote</div>
+        <div class="title">Local BACKLOG.md</div>
+        <div class="desc">No git remote found. Issues live in <code>BACKLOG.md</code> at the project root. <code>/spec</code> edits it directly. <code>/build</code> marks items done instead of creating a PR.</div>
+      </div>
+    </div>
+
+    <h3 class="mt24">What bootstrap does</h3>
+    <div class="workflow">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Pre-flight</div>
+          <div class="step-desc">Verifies you're in a git repo. Reads your remote URL to pick the backend (GitHub / Gitea / local). Stops and explains if something is off.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Inspect the project</div>
+          <div class="step-desc">Detects language, test command, lint command, and source directory. These get substituted into the agent files so <code>[TEST_COMMAND]</code> becomes <code>npm test</code> (or whatever applies).</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Check for existing files</div>
+          <div class="step-desc">Scans for <code>.claude/agents/*.md</code> and <code>.claude/commands/*.md</code>. Asks before overwriting — never silently clobbers your existing setup.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Write agent files</div>
+          <div class="step-desc">Creates <code>planner.md</code>, <code>implementer.md</code>, and <code>reviewer.md</code> in <code>.claude/agents/</code> with detected test/lint commands substituted in.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Write command files</div>
+          <div class="step-desc">Creates <code>spec.md</code> and <code>build.md</code> in <code>.claude/commands/</code>, baked to the detected backend. No runtime detection — these know exactly which API to call.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <div class="step-title">Write or merge CLAUDE.md</div>
+          <div class="step-desc">If no CLAUDE.md exists, writes the template. If one already exists, reads it, adds only missing sections, shows you the diff before writing. Never removes existing content.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <div class="step-title">Ensure global commands</div>
+          <div class="step-desc">Checks <code>~/.claude/commands/</code> for <code>backlog.md</code> and <code>reformat-backlog.md</code>. Writes them if missing, skips them if already present. Never overwrites global commands you've customized.</div>
+        </div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step">
+        <div class="step-num">8</div>
+        <div class="step-body">
+          <div class="step-title">Create labels / scaffold backlog</div>
+          <div class="step-desc">GitHub/Gitea: creates <code>agent-ready</code>, <code>in-progress</code>, and <code>in-review</code> labels. Local: scaffolds an empty <code>BACKLOG.md</code> with the canonical structure.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout mt16">
+      <strong>Two things bootstrap can't do for you:</strong> Fill in <code>CLAUDE.md</code>'s project description and conventions section (only you know those), and add your first issues or backlog items (it can scaffold the structure, but not the content).
+    </div>
+  </section>
+
+  <!-- BACKLOG -->
+  <section id="backlog">
+    <h2>Backlog management</h2>
+    <p class="section-intro">The <code>/backlog</code> command is a natural-language interface to your issue tracker — whether that's GitHub, Gitea, or a local markdown file. Tell it what you want; it figures out the rest.</p>
+
+    <div class="callout blue">
+      <strong>Auto-detection:</strong> <code>/backlog</code> reads your <code>git remote -v</code> at runtime and picks the right backend automatically — same logic as bootstrap, but decided fresh each time. Use it from any repo.
+    </div>
+
+    <h3 class="mt24">Quick capture — the default behavior</h3>
+    <p class="small muted" style="margin-bottom: 0;">Adding an item is frictionless by design. Title only is enough. Everything else can be filled in later with <code>/spec</code>.</p>
+    <div class="code-block">
+      <div class="code-header"><span class="filename">Example session</span></div>
+      <pre class="code"><span class="sy-comment"># Quick capture — title only</span>
+You: add 'dark mode support' to the icebox
+Claude: Added ID:#007 · Seq:3 in Icebox.
+        `P3` `someday`
+        Run /spec to spec it out when you're ready.
+
+<span class="sy-comment"># Move and reprioritize</span>
+You: move #007 to M2 and make it P2
+Claude: Moved ID:#007 to Milestone M2, priority updated to P2, Seq:4.
+        Seq renumbered in Icebox (items shifted up).
+
+<span class="sy-comment"># Mark done</span>
+You: close #007
+Claude: Marked ID:#007 done. Moved to Done section.
+
+<span class="sy-comment"># Show a summary</span>
+You: show the backlog
+Claude: [compact summary — IDs, titles, priority, status per section]</pre>
+    </div>
+
+    <h3 class="mt24">BACKLOG.md format</h3>
+    <p class="small muted" style="margin-bottom: 0;">The canonical format for local repos. IDs are permanent and never renumbered. Seq is position within its section and updates when items move.</p>
+
+    <div class="backlog-demo">
+<span class="bd-h1"># Project Name · Backlog</span>
+<span class="bd-meta">&lt;!-- format: v1 | updated: 2026-10-09 --&gt;</span>
+
+<span class="bd-h2">## Milestone M1 — Launch</span>
+<span class="bd-meta">&gt; **Goal**: Ship the MVP to beta users</span>
+<span class="bd-meta">&gt; **Target**: 2026-11-01</span>
+<span class="bd-meta">&gt; **Status**: in-progress</span>
+
+<span class="bd-h3">### ID:#001 · Implement JWT refresh tokens</span>
+<span class="bd-label">`P1` `Seq:1` `in-progress` `agent-ready`</span>
+
+<span class="bd-field">**Problem**</span>: Sessions expire after 1hr with no silent refresh...
+<span class="bd-field">**Acceptance Criteria**</span>
+<span class="bd-check">- [ ] Silent refresh fires when token is within 5min of expiry</span>
+<span class="bd-check">- [ ] Expired refresh token redirects to login</span>
+<span class="bd-field">**Out of Scope**</span>: OAuth flows, remember-me persistence
+<span class="bd-field">**Edge Cases**</span>: Network offline during refresh: queue and retry
+<span class="bd-field">**Technical Notes**</span>: Modify `src/auth/token.ts`
+<span class="bd-field">**Depends on**</span>: none
+
+<span class="bd-sep">---</span>
+
+<span class="bd-h2">## Backlog</span>
+<span class="bd-meta">&gt; Ungrouped work — no milestone assigned yet</span>
+
+<span class="bd-h3">### ID:#004 · Add CSV export to reports</span>
+<span class="bd-label">`P2` `Seq:1` `todo`</span>
+
+<span class="bd-field">**Problem**</span>: Finance team needs report data in Excel.
+<span class="bd-comment">(no spec yet — add with /spec 4)</span>
+
+<span class="bd-sep">---</span>
+
+<span class="bd-h2">## Icebox</span>
+<span class="bd-meta">&gt; Low priority / no milestone assigned</span>
+
+<span class="bd-h2">## Done</span>
+<span class="bd-done">- [x] ID:#000 Initial project scaffold — 2026-09-15</span>
+    </div>
+
+    <div class="callout mt16">
+      <strong>ID vs Seq:</strong> IDs are permanent — they're what you reference in commits (<code>Closes #001</code>) and <code>Depends on</code> fields. Seq is just position in the file. Moving an item changes its Seq; its ID never changes.
+    </div>
+
+    <h3 class="mt24">Reformatting an existing backlog</h3>
+    <p class="small muted" style="margin-bottom: 0;">Already have a TODO.md or BACKLOG.md in a different format? <code>/reformat-backlog</code> normalizes it into the canonical structure.</p>
+    <div class="code-block">
+      <div class="code-header"><span class="filename">Usage</span></div>
+      <pre class="code"><span class="sy-comment"># Auto-find a backlog in the current repo</span>
+/reformat-backlog
+
+<span class="sy-comment"># Point at a specific file (any name, any format)</span>
+/reformat-backlog path/to/my-todo-list.md</pre>
+    </div>
+
+    <p class="small muted mt16">The command analyzes your existing file, assigns IDs to items that don't have them, maps section names to canonical ones (<em>In Progress</em> → Backlog + <code>in-progress</code> label, <em>Someday/Maybe</em> → Icebox), normalizes priority tags, and writes the result. If the source file isn't named <code>BACKLOG.md</code>, it asks whether to save as <code>BACKLOG.md</code>, overwrite the original, or specify a path. It never auto-deletes your source file.</p>
+  </section>
+
+  <!-- SANDCASTLE -->
+  <section id="sandcastle">
+    <h2>Sandcastle: the Docker upgrade</h2>
+    <p class="section-intro">When worktree isolation isn't enough — you want agents that genuinely can't touch your host machine. Matt Pocock's Sandcastle library runs Claude Code inside Docker containers with bind-mounted worktrees.</p>
+
+    <div class="sandcastle-grid">
+      <div class="sc-card">
+        <div class="sc-label">What it does</div>
+        <div class="sc-title">Full container isolation</div>
+        <p>Each agent run gets a Docker container. It can only see the mounted worktree — no access to your filesystem, credentials, or network beyond what you allow. The container is destroyed when the agent finishes.</p>
+      </div>
+      <div class="sc-card">
+        <div class="sc-label">The pattern</div>
+        <div class="sc-title">Parallelize AFK agents</div>
+        <p>Call <code>sandcastle.run()</code> with a task and a branch name. Sandcastle spins up the container, runs the agent, merges the commits back into your repo. Run multiple calls concurrently for parallel implementations.</p>
+      </div>
+    </div>
+
+    <h3 class="mt24">Getting started</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="filename">Terminal</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre class="code"><span class="sy-comment"># Install Sandcastle</span>
+npm install @ai-hero/sandcastle
+
+<span class="sy-comment"># Scaffold the .sandcastle/ config directory + Docker image</span>
+npx sandcastle init .
+
+<span class="sy-comment"># Build the Docker image (do this once, rebuild after Dockerfile changes)</span>
+npx sandcastle docker build-image</pre>
+    </div>
+
+    <h3 class="mt24">Example: sequential reviewer pipeline</h3>
+    <p class="small muted" style="margin-bottom: 0;">Use the <code>sequential-reviewer</code> template as a starting point — it maps almost exactly to the planner → implementer → reviewer pattern.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="filename">.sandcastle/main.ts</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre class="code"><span class="sy-key">import</span> { run } from <span class="sy-str">"@ai-hero/sandcastle"</span>;
+
+<span class="sy-comment">// Step 1: Implement in an isolated container</span>
+<span class="sy-key">const</span> implResult = <span class="sy-key">await</span> run({
+  agent: <span class="sy-str">"claude-code"</span>,
+  branch: <span class="sy-str">`feature/issue-${issueNumber}`</span>,
+  prompt: `
+    Implement issue #${issueNumber}.
+    Use the planner agent, then the implementer agent.
+    Commit when done.
+  `,
+  model: <span class="sy-str">"claude-sonnet-5-5"</span>,
+});
+
+<span class="sy-comment">// Step 2: Review in a separate container (read-only)</span>
+<span class="sy-key">const</span> reviewResult = <span class="sy-key">await</span> run({
+  agent: <span class="sy-str">"claude-code"</span>,
+  branch: implResult.branch,
+  prompt: `
+    Review the changes on branch ${implResult.branch}.
+    Run the test suite. Give an APPROVE or REQUEST CHANGES verdict.
+  `,
+  model: <span class="sy-str">"claude-sonnet-5-5"</span>,
+});
+
+console.log(reviewResult.output);</pre>
+    </div>
+
+    <div class="callout mt16">
+      <strong>Prerequisites:</strong> Docker Desktop and Git must be installed. Set <code>ANTHROPIC_API_KEY</code> in <code>.sandcastle/.env</code>. Note that Sandcastle uses API credits directly — not your Max subscription.
+    </div>
+
+    <h3 class="mt24">Phase your adoption</h3>
+    <ul class="list mt8">
+      <li><strong>Now:</strong> Run <code>/bootstrap</code> in your repo. Use <code>/backlog</code> to add and manage issues, <code>/spec</code> to grill them into specs, then <code>/build</code> with you approving prompts. Build trust in the pipeline.</li>
+      <li><strong>Soon:</strong> Switch implementer to <code>permissionMode: auto</code> for the true AFK experience within your existing checkout.</li>
+      <li><strong>Later:</strong> Add Sandcastle when you want full container isolation and true parallel agents. Use the <code>sequential-reviewer</code> template as your starting scaffold.</li>
+    </ul>
+  </section>
+
+</div>
+
+<script>
+// Nav active state
+function setActive(el) {
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// Update nav on scroll
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('.nav a[href^="#"]');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const id = entry.target.id;
+      navLinks.forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+      });
+    }
+  });
+}, { rootMargin: '-30% 0px -60% 0px' });
+sections.forEach(s => observer.observe(s));
+
+// Tab switching
+function switchTab(btn, panelId) {
+  const tabList = btn.closest('.tab-list');
+  const tabs = tabList.closest('.tabs');
+  tabList.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  tabs.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(panelId).classList.add('active');
+}
+
+// Copy buttons
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre.code');
+  const text = pre.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  }).catch(() => {
+    const range = document.createRange();
+    range.selectNodeContents(pre);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
+}
+</script>
+
+</body>
+</html>
